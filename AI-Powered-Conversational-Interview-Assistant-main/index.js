@@ -1,40 +1,87 @@
-// Global State
+// =========================================================
+// GLOBAL STATE
+// =========================================================
+
 let mediaRecorder = null;
 let recordingChunks = [];
 let recordedBlob = null;
+
 let currentSubject = null;
 let isSpeaking = false;
 let currentAudio = null;
 
 
-// DOM Elements
+// =========================================================
+// DOM ELEMENTS
+// =========================================================
+
 const welcomeState = document.getElementById("welcomeState");
 const interviewState = document.getElementById("interviewState");
+
 const subjectBtns = document.querySelectorAll(".subject-btn");
+
 const subjectBadge = document.getElementById("subjectBadge");
 const subjectIcon = document.getElementById("subjectIcon");
 const questionNum = document.getElementById("questionNum");
+
 const speakingBubble = document.getElementById("speakingBubble");
-const startInterviewBtn = document.getElementById("startInterviewBtn");
-const recordBtn = document.getElementById("recordBtn");
-const micIcon = document.getElementById("micIcon");
-const stopIcon = document.getElementById("stopIcon");
-const recordingStatus = document.getElementById("recordingStatus");
-const submitBtn = document.getElementById("submitBtn");
-const endInterviewBtn = document.getElementById("endInterviewBtn");
-const feedbackSection = document.getElementById("feedbackSection");
-const getFeedbackArea = document.getElementById("getFeedbackArea");
-const getFeedbackBtn = document.getElementById("getFeedbackBtn");
-const feedbackContent = document.getElementById("feedbackContent");
-const feedbackSubject = document.getElementById("feedbackSubject");
-const scoreCircle = document.getElementById("scoreCircle");
-const scoreValue = document.getElementById("scoreValue");
-const feedbackText = document.getElementById("feedbackText");
-const improvementText = document.getElementById("improvementText");
-const newInterviewBtn = document.getElementById("newInterviewBtn");
+
+const startInterviewBtn =
+    document.getElementById("startInterviewBtn");
+
+const recordBtn =
+    document.getElementById("recordBtn");
+
+const micIcon =
+    document.getElementById("micIcon");
+
+const stopIcon =
+    document.getElementById("stopIcon");
+
+const recordingStatus =
+    document.getElementById("recordingStatus");
+
+const submitBtn =
+    document.getElementById("submitBtn");
+
+const endInterviewBtn =
+    document.getElementById("endInterviewBtn");
+
+const feedbackSection =
+    document.getElementById("feedbackSection");
+
+const getFeedbackArea =
+    document.getElementById("getFeedbackArea");
+
+const getFeedbackBtn =
+    document.getElementById("getFeedbackBtn");
+
+const feedbackContent =
+    document.getElementById("feedbackContent");
+
+const feedbackSubject =
+    document.getElementById("feedbackSubject");
+
+const scoreCircle =
+    document.getElementById("scoreCircle");
+
+const scoreValue =
+    document.getElementById("scoreValue");
+
+const feedbackText =
+    document.getElementById("feedbackText");
+
+const improvementText =
+    document.getElementById("improvementText");
+
+const newInterviewBtn =
+    document.getElementById("newInterviewBtn");
 
 
-// Subject Icons Map
+// =========================================================
+// SUBJECT ICONS
+// =========================================================
+
 const iconMap = {
     "Self Introduction": "fas fa-user text-blue-400",
     "Generative AI": "fas fa-brain text-purple-400",
@@ -46,7 +93,16 @@ const iconMap = {
 
 
 // =========================================================
-// UI STATE FUNCTIONS
+// API URLs
+// =========================================================
+
+const startInterviewApiUrl = "/start-interview";
+const submitAnswerApiUrl = "/submit-answer";
+const getFeedbackApiUrl = "/get-feedback";
+
+
+// =========================================================
+// UI FUNCTIONS
 // =========================================================
 
 function showInterviewPanel(subject) {
@@ -62,11 +118,14 @@ function showInterviewPanel(subject) {
 
     welcomeState.classList.add("hidden");
     interviewState.classList.remove("hidden");
+
     feedbackSection.classList.add("hidden");
 
     subjectBadge.textContent = subject;
+
     subjectIcon.className =
-        iconMap[subject] + " text-2xl";
+        (iconMap[subject] || "fas fa-question") +
+        " text-2xl";
 
     questionNum.textContent = "1";
 
@@ -77,6 +136,7 @@ function showInterviewPanel(subject) {
     recordBtn.classList.add("hidden");
     recordBtn.disabled = true;
 
+    submitBtn.classList.add("hidden");
     submitBtn.disabled = true;
 
     endInterviewBtn.disabled = true;
@@ -103,6 +163,10 @@ function hideSpeakingBubble() {
 
 function enableRecording() {
 
+    if (isSpeaking) {
+        return;
+    }
+
     recordBtn.disabled = false;
     endInterviewBtn.disabled = false;
 
@@ -115,8 +179,6 @@ function disableRecording() {
 
     recordBtn.disabled = true;
     submitBtn.disabled = true;
-
-    submitBtn.classList.add("hidden");
 }
 
 
@@ -142,25 +204,33 @@ function showFeedbackSection() {
 function displayFeedback(data) {
 
     feedbackSubject.textContent =
-        data.subject || currentSubject;
+        data.subject || currentSubject || "Interview";
 
-    scoreValue.textContent =
-        data.candidate_score || 0;
+    const score =
+        Number(data.candidate_score) || 0;
+
+    scoreValue.textContent = score;
+
+    // SVG circle circumference:
+    // 2 × PI × 40 ≈ 251.2
+
+    const circumference = 251.2;
 
     const offset =
-        301.6 -
-        ((data.candidate_score || 0) / 5) * 301.6;
+        circumference -
+        (Math.min(score, 5) / 5) *
+        circumference;
 
     scoreCircle.style.strokeDashoffset =
         offset;
 
     feedbackText.textContent =
         data.feedback ||
-        "No feedback available";
+        "No feedback available.";
 
     improvementText.textContent =
         data.areas_of_improvement ||
-        "No suggestions available";
+        "No suggestions available.";
 
     getFeedbackArea.classList.add("hidden");
 
@@ -174,6 +244,12 @@ function resetToWelcome() {
 
     isSpeaking = false;
 
+    if (mediaRecorder &&
+        mediaRecorder.state !== "inactive") {
+
+        mediaRecorder.stop();
+    }
+
     mediaRecorder = null;
 
     recordingChunks = [];
@@ -184,17 +260,20 @@ function resetToWelcome() {
 
         currentAudio.pause();
 
+        currentAudio.src = "";
+
         currentAudio = null;
     }
 
     subjectBtns.forEach((btn) => {
-
         btn.classList.remove("active");
     });
 
     welcomeState.classList.remove("hidden");
 
     interviewState.classList.add("hidden");
+
+    feedbackSection.classList.add("hidden");
 
     recordBtn.classList.remove(
         "bg-red-500",
@@ -211,395 +290,414 @@ function resetToWelcome() {
 
     stopIcon.classList.add("hidden");
 
+    startInterviewBtn.classList.remove("hidden");
+
+    recordBtn.classList.add("hidden");
+
     submitBtn.classList.add("hidden");
+
+    submitBtn.disabled = true;
+
+    endInterviewBtn.disabled = true;
 
     speakingBubble.classList.add("hidden");
 
-    scoreCircle.style.strokeDashoffset = 301.6;
+    scoreCircle.style.strokeDashoffset = 251.2;
+
+    scoreValue.textContent = "0";
 
     getFeedbackBtn.textContent =
         "Get Feedback";
 
     getFeedbackBtn.disabled = false;
+
+    recordingStatus.textContent =
+        "Click Start Interview to begin";
 }
 
 
 // =========================================================
-// AUDIO FUNCTIONS
+// AUDIO PLAYBACK
 // =========================================================
 
-function handleAudioStream(response, onComplete) {
+// Instead of using MediaSource directly,
+// collect the streamed base64 audio and play it
+// after the complete response is received.
+//
+// This is much more reliable on Render/browser.
 
-    const reader =
-        response.body.getReader();
+async function playAudioStream(response, onComplete) {
 
-    const decoder =
-        new TextDecoder();
+    try {
 
-    const mediaSource =
-        new MediaSource();
+        showSpeakingBubble();
 
-    const audioUrl =
-        URL.createObjectURL(mediaSource);
+        isSpeaking = true;
 
-    let sourceBuffer;
+        recordBtn.disabled = true;
 
-    let queue = [];
+        recordingStatus.textContent =
+            "Natalie is speaking...";
 
-    let isSourceBufferReady = false;
+        if (currentAudio) {
 
-    speakingBubble.classList.remove("hidden");
+            currentAudio.pause();
 
-    isSpeaking = true;
+            currentAudio.src = "";
 
-    recordBtn.disabled = true;
+            currentAudio = null;
+        }
 
-    recordingStatus.textContent =
-        "Listening...";
+        const reader =
+            response.body.getReader();
 
-    if (currentAudio) {
+        const decoder =
+            new TextDecoder();
 
-        currentAudio.pause();
+        let textBuffer = "";
 
-        currentAudio = null;
-    }
+        const audioChunks = [];
 
-    currentAudio =
-        new Audio(audioUrl);
+        while (true) {
 
-    currentAudio.play().catch(() => {});
+            const {
+                done,
+                value
+            } = await reader.read();
 
-    mediaSource.addEventListener(
-        "sourceopen",
-        () => {
-
-            sourceBuffer =
-                mediaSource.addSourceBuffer(
-                    "audio/mpeg"
-                );
-
-            isSourceBufferReady = true;
-
-            while (
-                queue.length > 0 &&
-                !sourceBuffer.updating
-            ) {
-
-                sourceBuffer.appendBuffer(
-                    queue.shift()
-                );
+            if (done) {
+                break;
             }
 
-            sourceBuffer.addEventListener(
-                "updateend",
-                () => {
+            textBuffer +=
+                decoder.decode(
+                    value,
+                    { stream: true }
+                );
 
-                    if (
-                        queue.length > 0 &&
-                        !sourceBuffer.updating
-                    ) {
+            const lines =
+                textBuffer.split("\n");
 
-                        sourceBuffer.appendBuffer(
-                            queue.shift()
-                        );
-                    }
+            textBuffer =
+                lines.pop() || "";
+
+            for (const line of lines) {
+
+                if (!line.trim()) {
+                    continue;
                 }
-            );
-        }
-    );
-
-
-    function processChunk({
-        done,
-        value
-    }) {
-
-        console.log(
-            "Processing chunk:",
-            value,
-            done
-        );
-
-        if (done) {
-
-            if (
-                mediaSource.readyState ===
-                "open"
-            ) {
 
                 try {
 
-                    mediaSource.endOfStream();
+                    const binary =
+                        atob(line.trim());
 
-                } catch (e) {}
+                    const bytes =
+                        new Uint8Array(
+                            binary.length
+                        );
+
+                    for (
+                        let i = 0;
+                        i < binary.length;
+                        i++
+                    ) {
+
+                        bytes[i] =
+                            binary.charCodeAt(i);
+                    }
+
+                    audioChunks.push(bytes);
+
+                } catch (error) {
+
+                    console.error(
+                        "Audio decode error:",
+                        error
+                    );
+                }
             }
+        }
+
+        // Process final incomplete line
+        if (textBuffer.trim()) {
+
+            try {
+
+                const binary =
+                    atob(textBuffer.trim());
+
+                const bytes =
+                    new Uint8Array(
+                        binary.length
+                    );
+
+                for (
+                    let i = 0;
+                    i < binary.length;
+                    i++
+                ) {
+
+                    bytes[i] =
+                        binary.charCodeAt(i);
+                }
+
+                audioChunks.push(bytes);
+
+            } catch (error) {
+
+                console.error(
+                    "Final audio decode error:",
+                    error
+                );
+            }
+        }
+
+        if (audioChunks.length === 0) {
+
+            throw new Error(
+                "No audio data received"
+            );
+        }
+
+        const audioBlob =
+            new Blob(
+                audioChunks,
+                {
+                    type: "audio/mpeg"
+                }
+            );
+
+        const audioUrl =
+            URL.createObjectURL(audioBlob);
+
+        currentAudio =
+            new Audio(audioUrl);
+
+        currentAudio.onended = () => {
+
+            isSpeaking = false;
+
+            hideSpeakingBubble();
+
+            enableRecording();
+
+            URL.revokeObjectURL(audioUrl);
 
             if (onComplete) {
                 onComplete();
             }
+        };
 
-            return;
-        }
+        currentAudio.onerror = (error) => {
 
-        const textChunk =
-            decoder.decode(
-                value,
-                { stream: true }
+            console.error(
+                "Audio playback error:",
+                error
             );
 
-        textChunk
-            .split("\n")
-            .forEach((line) => {
+            isSpeaking = false;
 
-                if (line.trim()) {
+            hideSpeakingBubble();
 
-                    try {
+            enableRecording();
 
-                        const binaryString =
-                            atob(line);
+            URL.revokeObjectURL(audioUrl);
 
-                        const bytes =
-                            new Uint8Array(
-                                binaryString.length
-                            );
+            if (onComplete) {
+                onComplete();
+            }
+        };
 
-                        for (
-                            let i = 0;
-                            i < binaryString.length;
-                            i++
-                        ) {
+        await currentAudio.play();
 
-                            bytes[i] =
-                                binaryString.charCodeAt(i);
-                        }
+    } catch (error) {
 
-                        if (
-                            isSourceBufferReady &&
-                            !sourceBuffer.updating
-                        ) {
-
-                            sourceBuffer.appendBuffer(
-                                bytes
-                            );
-
-                        } else {
-
-                            queue.push(bytes);
-                        }
-
-                    } catch (e) {
-
-                        console.error(
-                            "Base64 decode error:",
-                            e
-                        );
-                    }
-                }
-            });
-
-        reader.read().then(
-            processChunk
+        console.error(
+            "Audio stream error:",
+            error
         );
+
+        isSpeaking = false;
+
+        hideSpeakingBubble();
+
+        enableRecording();
+
+        if (onComplete) {
+            onComplete();
+        }
     }
-
-    reader.read().then(
-        processChunk
-    );
-
-
-    currentAudio.onended = () => {
-
-        isSpeaking = false;
-
-        speakingBubble.classList.add(
-            "hidden"
-        );
-
-        enableRecording();
-
-        URL.revokeObjectURL(audioUrl);
-    };
-
-
-    currentAudio.onerror = () => {
-
-        isSpeaking = false;
-
-        speakingBubble.classList.add(
-            "hidden"
-        );
-
-        enableRecording();
-
-        URL.revokeObjectURL(audioUrl);
-    };
 }
 
 
 // =========================================================
-// RECORDING FUNCTIONS
+// RECORDING
 // =========================================================
 
-function startRecording() {
+async function startRecording() {
 
-    navigator.mediaDevices
-        .getUserMedia({ audio: true })
-        .then((stream) => {
+    try {
 
-            const options = {
-                mimeType:
-                    "audio/webm;codecs=opus"
+        const stream =
+            await navigator.mediaDevices.getUserMedia({
+                audio: true
+            });
+
+        let mimeType =
+            "audio/webm;codecs=opus";
+
+        if (
+            !MediaRecorder.isTypeSupported(
+                mimeType
+            )
+        ) {
+
+            mimeType =
+                "audio/webm";
+        }
+
+        mediaRecorder =
+            new MediaRecorder(
+                stream,
+                { mimeType }
+            );
+
+        recordingChunks = [];
+
+        recordedBlob = null;
+
+        mediaRecorder.ondataavailable =
+            (event) => {
+
+                if (event.data.size > 0) {
+
+                    recordingChunks.push(
+                        event.data
+                    );
+                }
             };
 
-            if (
-                !MediaRecorder.isTypeSupported(
-                    options.mimeType
-                )
-            ) {
+        mediaRecorder.onstop = () => {
 
-                options.mimeType =
-                    "audio/webm";
-            }
-
-            mediaRecorder =
-                new MediaRecorder(
-                    stream,
-                    options
+            recordedBlob =
+                new Blob(
+                    recordingChunks,
+                    {
+                        type: "audio/webm"
+                    }
                 );
 
-            recordingChunks = [];
+            stream
+                .getTracks()
+                .forEach(
+                    track => track.stop()
+                );
+        };
 
+        mediaRecorder.start();
 
-            mediaRecorder.ondataavailable =
-                (e) => {
+        recordBtn.classList.remove(
+            "bg-zinc-800/80",
+            "text-gray-400"
+        );
 
-                    if (e.data.size > 0) {
+        recordBtn.classList.add(
+            "bg-red-500",
+            "text-white",
+            "recording-active"
+        );
 
-                        recordingChunks.push(
-                            e.data
-                        );
-                    }
-                };
+        micIcon.classList.add("hidden");
 
+        stopIcon.classList.remove("hidden");
 
-            mediaRecorder.onstop = () => {
+        recordingStatus.textContent =
+            "Recording...";
 
-                recordedBlob =
-                    new Blob(
-                        recordingChunks,
-                        {
-                            type: "audio/webm"
-                        }
-                    );
+        submitBtn.classList.add("hidden");
 
-                stream
-                    .getTracks()
-                    .forEach(
-                        (track) =>
-                            track.stop()
-                    );
-            };
+        submitBtn.disabled = true;
 
+        endInterviewBtn.disabled = true;
 
-            mediaRecorder.start();
+    } catch (error) {
 
-            recordBtn.classList.remove(
-                "bg-zinc-800/80",
-                "text-gray-400"
-            );
+        console.error(
+            "Microphone error:",
+            error
+        );
 
-            recordBtn.classList.add(
-                "bg-red-500",
-                "text-white",
-                "recording-active"
-            );
+        recordingStatus.textContent =
+            "Microphone permission denied";
 
-            micIcon.classList.add(
-                "hidden"
-            );
-
-            stopIcon.classList.remove(
-                "hidden"
-            );
-
-            recordingStatus.textContent =
-                "Recording...";
-
-            submitBtn.classList.add(
-                "hidden"
-            );
-
-            endInterviewBtn.disabled =
-                true;
-        });
+        alert(
+            "Please allow microphone access in your browser."
+        );
+    }
 }
 
 
 function stopRecording() {
 
     if (
-        mediaRecorder &&
-        mediaRecorder.state !==
-            "inactive"
+        !mediaRecorder ||
+        mediaRecorder.state === "inactive"
     ) {
-
-        mediaRecorder.stop();
-
-        recordBtn.classList.remove(
-            "bg-red-500",
-            "text-white",
-            "recording-active"
-        );
-
-        recordBtn.classList.add(
-            "bg-zinc-800/80",
-            "text-gray-400"
-        );
-
-        micIcon.classList.remove(
-            "hidden"
-        );
-
-        stopIcon.classList.add(
-            "hidden"
-        );
-
-        recordingStatus.textContent =
-            "Recording complete";
-
-        submitBtn.classList.remove(
-            "hidden"
-        );
-
-        submitBtn.disabled = false;
+        return;
     }
+
+    mediaRecorder.stop();
+
+    recordBtn.classList.remove(
+        "bg-red-500",
+        "text-white",
+        "recording-active"
+    );
+
+    recordBtn.classList.add(
+        "bg-zinc-800/80",
+        "text-gray-400"
+    );
+
+    micIcon.classList.remove("hidden");
+
+    stopIcon.classList.add("hidden");
+
+    recordingStatus.textContent =
+        "Recording complete";
+
+    submitBtn.classList.remove("hidden");
+
+    submitBtn.disabled = false;
+
+    endInterviewBtn.disabled = false;
 }
 
 
 // =========================================================
-// API FUNCTIONS
+// START INTERVIEW
 // =========================================================
-
-// IMPORTANT:
-// Use relative URLs so the deployed Render
-// application calls its own Flask backend.
-
-const startInterviewApiUrl =
-    "/start-interview";
-
 
 async function startInterview() {
 
-    startInterviewBtn.classList.add(
-        "hidden"
-    );
+    if (!currentSubject) {
 
-    recordBtn.classList.remove(
-        "hidden"
-    );
+        alert(
+            "Please select an interview topic first."
+        );
+
+        return;
+    }
+
+    startInterviewBtn.disabled = true;
+
+    startInterviewBtn.classList.add("hidden");
+
+    recordBtn.classList.remove("hidden");
 
     recordingStatus.textContent =
-        "Connecting...";
+        "Connecting to AI interviewer...";
 
     try {
 
@@ -621,7 +719,6 @@ async function startInterview() {
                 }
             );
 
-
         if (!response.ok) {
 
             throw new Error(
@@ -629,24 +726,20 @@ async function startInterview() {
             );
         }
 
-
         const contentType =
             response.headers.get(
                 "content-type"
-            );
-
+            ) || "";
 
         if (
-            contentType &&
             contentType.includes(
                 "text/plain"
             )
         ) {
 
-            handleAudioStream(
+            await playAudioStream(
                 response,
                 () => {
-
                     endInterviewBtn.disabled =
                         false;
                 }
@@ -658,14 +751,11 @@ async function startInterview() {
                 await response.json();
 
             console.log(
-                "Question:",
-                data.question
+                "Start interview response:",
+                data
             );
 
             enableRecording();
-
-            endInterviewBtn.disabled =
-                false;
         }
 
     } catch (error) {
@@ -676,17 +766,15 @@ async function startInterview() {
         );
 
         recordingStatus.textContent =
-            "Backend not connected";
+            "Backend connection failed";
 
         hideSpeakingBubble();
 
-        recordBtn.classList.add(
-            "hidden"
-        );
+        recordBtn.classList.add("hidden");
 
-        startInterviewBtn.classList.remove(
-            "hidden"
-        );
+        startInterviewBtn.classList.remove("hidden");
+
+        startInterviewBtn.disabled = false;
     }
 }
 
@@ -695,21 +783,21 @@ async function startInterview() {
 // SUBMIT ANSWER
 // =========================================================
 
-const submitAnswerApiUrl =
-    "/submit-answer";
-
-
 async function submitAnswer() {
 
     if (!recordedBlob) {
+
+        alert(
+            "Please record an answer first."
+        );
+
         return;
     }
 
     disableRecording();
 
     recordingStatus.textContent =
-        "Submitting...";
-
+        "Submitting your answer...";
 
     const formData =
         new FormData();
@@ -719,7 +807,6 @@ async function submitAnswer() {
         recordedBlob,
         "answer.webm"
     );
-
 
     try {
 
@@ -732,19 +819,12 @@ async function submitAnswer() {
                 }
             );
 
-
         if (!response.ok) {
 
             throw new Error(
                 `Server error: ${response.status}`
             );
         }
-
-
-        const contentType =
-            response.headers.get(
-                "content-type"
-            );
 
         const isComplete =
             response.headers.get(
@@ -756,7 +836,6 @@ async function submitAnswer() {
                 "X-Question-Number"
             );
 
-
         if (questionNumber) {
 
             updateQuestionNumber(
@@ -764,40 +843,32 @@ async function submitAnswer() {
             );
         }
 
+        const contentType =
+            response.headers.get(
+                "content-type"
+            ) || "";
+
+        recordedBlob = null;
+
+        recordingChunks = [];
 
         if (
-            contentType &&
             contentType.includes(
                 "text/plain"
             )
         ) {
 
-            handleAudioStream(
+            await playAudioStream(
                 response,
                 () => {
 
-                    recordedBlob = null;
-
-                    recordingChunks = [];
-
-
                     if (isComplete) {
 
-                        if (currentAudio) {
-
-                            currentAudio.onended =
-                                () => {
-
-                                    isSpeaking =
-                                        false;
-
-                                    hideSpeakingBubble();
-
-                                    showFeedbackSection();
-                                };
-                        }
+                        showFeedbackSection();
 
                     } else {
+
+                        enableRecording();
 
                         endInterviewBtn.disabled =
                             false;
@@ -811,14 +882,9 @@ async function submitAnswer() {
                 await response.json();
 
             console.log(
-                "Response:",
+                "Submit response:",
                 data
             );
-
-            recordedBlob = null;
-
-            recordingChunks = [];
-
 
             if (isComplete) {
 
@@ -841,7 +907,7 @@ async function submitAnswer() {
         );
 
         recordingStatus.textContent =
-            "Connection error";
+            "Failed to submit answer";
 
         hideSpeakingBubble();
 
@@ -856,21 +922,21 @@ async function submitAnswer() {
 
 async function endInterview() {
 
-    if (
-        !confirm(
+    const confirmed =
+        confirm(
             "End interview and get feedback?"
-        )
-    ) {
+        );
+
+    if (!confirmed) {
         return;
     }
 
     disableRecording();
 
-    endInterviewBtn.disabled =
-        true;
+    endInterviewBtn.disabled = true;
 
     recordingStatus.textContent =
-        "Ending interview...";
+        "Generating feedback...";
 
     await getFeedback();
 }
@@ -880,10 +946,6 @@ async function endInterview() {
 // GET FEEDBACK
 // =========================================================
 
-const getFeedbackApiUrl =
-    "/get-feedback";
-
-
 async function getFeedback() {
 
     showFeedbackSection();
@@ -892,7 +954,6 @@ async function getFeedback() {
         "Generating...";
 
     getFeedbackBtn.disabled = true;
-
 
     try {
 
@@ -911,7 +972,6 @@ async function getFeedback() {
                 }
             );
 
-
         if (!response.ok) {
 
             throw new Error(
@@ -919,15 +979,19 @@ async function getFeedback() {
             );
         }
 
-
         const data =
             await response.json();
-
 
         if (data.success) {
 
             displayFeedback(
                 data.feedback
+            );
+
+        } else {
+
+            throw new Error(
+                "Feedback generation failed"
             );
         }
 
@@ -951,78 +1015,130 @@ async function getFeedback() {
 // EVENT LISTENERS
 // =========================================================
 
-subjectBtns.forEach((btn) => {
+function initializeApp() {
 
-    btn.addEventListener(
+    console.log(
+        "AI Interview Assistant initialized"
+    );
+
+    console.log(
+        "Subject buttons:",
+        subjectBtns.length
+    );
+
+    // Topic buttons
+
+    subjectBtns.forEach((btn) => {
+
+        btn.addEventListener(
+            "click",
+            () => {
+
+                console.log(
+                    "Selected topic:",
+                    btn.dataset.subject
+                );
+
+                if (
+                    currentSubject ===
+                    btn.dataset.subject
+                ) {
+                    return;
+                }
+
+                resetToWelcome();
+
+                showInterviewPanel(
+                    btn.dataset.subject
+                );
+            }
+        );
+    });
+
+
+    // Start interview
+
+    startInterviewBtn.addEventListener(
+        "click",
+        startInterview
+    );
+
+
+    // Record / Stop
+
+    recordBtn.addEventListener(
         "click",
         () => {
 
             if (
-                currentSubject ===
-                btn.dataset.subject
+                isSpeaking ||
+                recordBtn.disabled
             ) {
                 return;
             }
 
-            resetToWelcome();
+            if (
+                !mediaRecorder ||
+                mediaRecorder.state === "inactive"
+            ) {
 
-            showInterviewPanel(
-                btn.dataset.subject
-            );
+                startRecording();
+
+            } else {
+
+                stopRecording();
+            }
         }
     );
-});
 
 
-startInterviewBtn.addEventListener(
-    "click",
-    startInterview
-);
+    // Submit
+
+    submitBtn.addEventListener(
+        "click",
+        submitAnswer
+    );
 
 
-recordBtn.addEventListener(
-    "click",
-    () => {
+    // End interview
 
-        if (
-            isSpeaking ||
-            recordBtn.disabled
-        ) {
-            return;
-        }
-
-        if (
-            !mediaRecorder ||
-            mediaRecorder.state ===
-                "inactive"
-        ) {
-
-            startRecording();
-
-        } else {
-
-            stopRecording();
-        }
-    }
-);
+    endInterviewBtn.addEventListener(
+        "click",
+        endInterview
+    );
 
 
-submitBtn.addEventListener(
-    "click",
-    submitAnswer
-);
+    // Get feedback
 
-endInterviewBtn.addEventListener(
-    "click",
-    endInterview
-);
+    getFeedbackBtn.addEventListener(
+        "click",
+        getFeedback
+    );
 
-getFeedbackBtn.addEventListener(
-    "click",
-    getFeedback
-);
 
-newInterviewBtn.addEventListener(
-    "click",
-    resetToWelcome
-);
+    // New interview
+
+    newInterviewBtn.addEventListener(
+        "click",
+        resetToWelcome
+    );
+}
+
+
+// =========================================================
+// START APP AFTER HTML IS READY
+// =========================================================
+
+if (
+    document.readyState === "loading"
+) {
+
+    document.addEventListener(
+        "DOMContentLoaded",
+        initializeApp
+    );
+
+} else {
+
+    initializeApp();
+}

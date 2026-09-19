@@ -13,11 +13,20 @@ import json
 
 load_dotenv()
 
+# =========================
+# API KEYS
+# =========================
+
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MURF_API_KEY = os.getenv("MURF_API_KEY")
 ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
 
 aai.settings.api_key = ASSEMBLYAI_API_KEY
+
+
+# =========================
+# LANGCHAIN / LANGGRAPH
+# =========================
 
 checkpointer = InMemorySaver()
 
@@ -32,9 +41,19 @@ agent = create_agent(
     checkpointer=checkpointer
 )
 
+
+# =========================
+# INTERVIEW STATE
+# =========================
+
 question_count = 0
 current_subject = ""
 thread_id = "interview_session"
+
+
+# =========================
+# INTERVIEW PROMPT
+# =========================
 
 INTERVIEW_PROMPT = """You are Natalie, a friendly and conversational interviewer conducting a natural {subject} interview.
 
@@ -51,6 +70,11 @@ CRITICAL: Read the conversation history carefully. Only acknowledge what the can
 
 Keep it short, conversational, and adaptive!"""
 
+
+# =========================
+# FEEDBACK PROMPT
+# =========================
+
 FEEDBACK_PROMPT = """Based on our complete interview conversation, provide detailed feedback as JSON only:
 {{
     "subject": "<topic>",
@@ -61,9 +85,9 @@ FEEDBACK_PROMPT = """Based on our complete interview conversation, provide detai
 Be specific - reference ACTUAL things they said during the interview."""
 
 
-# =========================================================
+# =========================
 # FLASK APP
-# =========================================================
+# =========================
 
 app = Flask(__name__)
 
@@ -76,9 +100,9 @@ CORS(
 )
 
 
-# =========================================================
+# =========================
 # SERVE FRONTEND
-# =========================================================
+# =========================
 
 @app.route("/")
 def home():
@@ -97,12 +121,11 @@ def javascript():
     )
 
 
-# =========================================================
-# MURF TEXT-TO-SPEECH
-# =========================================================
+# =========================
+# MURF TEXT TO SPEECH
+# =========================
 
 def stream_audio(text):
-
     BASE_URL = "https://global.api.murf.ai/v1/speech/stream"
 
     payload = {
@@ -129,14 +152,13 @@ def stream_audio(text):
     response.raise_for_status()
 
     for chunk in response.iter_content(chunk_size=4096):
-
         if chunk:
             yield base64.b64encode(chunk).decode("utf-8") + "\n"
 
 
-# =========================================================
+# =========================
 # START INTERVIEW
-# =========================================================
+# =========================
 
 @app.route("/start-interview", methods=["POST"])
 def start_interview():
@@ -146,7 +168,8 @@ def start_interview():
     global checkpointer
     global agent
 
-    data = request.json
+    # Safer JSON handling
+    data = request.get_json(silent=True) or {}
 
     current_subject = data.get(
         "subject",
@@ -155,6 +178,7 @@ def start_interview():
 
     question_count = 1
 
+    # Create a fresh interview memory
     checkpointer = InMemorySaver()
 
     agent = create_agent(
@@ -206,13 +230,11 @@ def start_interview():
     )
 
 
-# =========================================================
+# =========================
 # SPEECH TO TEXT
-# =========================================================
+# =========================
 
 def speech_to_text(audio_path):
-
-    """Convert audio file to text using AssemblyAI"""
 
     transcriber = aai.Transcriber()
 
@@ -237,14 +259,21 @@ def speech_to_text(audio_path):
     )
 
 
-# =========================================================
+# =========================
 # SUBMIT ANSWER
-# =========================================================
+# =========================
 
 @app.route("/submit-answer", methods=["POST"])
 def submit_answer():
 
     global question_count
+
+    # Check whether audio exists
+    if "audio" not in request.files:
+        return jsonify({
+            "success": False,
+            "error": "No audio file received."
+        }), 400
 
     audio_file = request.files["audio"]
 
@@ -261,16 +290,25 @@ def submit_answer():
             temp_path
         )
 
+    except Exception as error:
+
+        print(
+            f"Speech-to-text error: {error}"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "Failed to convert speech to text."
+        }), 500
+
     finally:
 
         if os.path.exists(temp_path):
             os.unlink(temp_path)
 
+    # If AssemblyAI returns empty text
     if not answer or answer.strip() == "":
-
-        answer = (
-            "[Candidate provided a verbal response]"
-        )
+        answer = "[Candidate provided a verbal response]"
 
     print(
         f"[Answer {question_count}] {answer}"
@@ -282,6 +320,7 @@ def submit_answer():
         }
     }
 
+    # Add candidate answer to conversation
     agent.invoke(
         {
             "messages": [
@@ -294,9 +333,9 @@ def submit_answer():
         config=config
     )
 
-    # =====================================================
-    # INTERVIEW COMPLETE AFTER 5 QUESTIONS
-    # =====================================================
+    # =========================
+    # INTERVIEW COMPLETE
+    # =========================
 
     if question_count >= 5:
 
@@ -317,9 +356,9 @@ def submit_answer():
             config=config
         )
 
-        closing_message = (
-            response["messages"][-1].content
-        )
+        closing_message = response[
+            "messages"
+        ][-1].content
 
         print(
             f"\n[Closing] {closing_message}"
@@ -333,9 +372,9 @@ def submit_answer():
             }
         )
 
-    # =====================================================
+    # =========================
     # NEXT QUESTION
-    # =====================================================
+    # =========================
 
     question_count += 1
 
@@ -365,7 +404,9 @@ Only reference what they truly said."""
         config=config
     )
 
-    question = response["messages"][-1].content
+    question = response[
+        "messages"
+    ][-1].content
 
     print(
         f"\n[Question {question_count}] {question}"
@@ -380,9 +421,9 @@ Only reference what they truly said."""
     )
 
 
-# =========================================================
+# =========================
 # GET FEEDBACK
-# =========================================================
+# =========================
 
 @app.route("/get-feedback", methods=["POST"])
 def get_feedback():
@@ -410,7 +451,9 @@ def get_feedback():
         config=config
     )
 
-    text = response["messages"][-1].content
+    text = response[
+        "messages"
+    ][-1].content
 
     print(
         f"\n[Feedback Generated]\n{text}\n"
@@ -418,6 +461,7 @@ def get_feedback():
 
     cleaned = text.strip()
 
+    # Remove Markdown code fences if Gemini adds them
     if "```" in cleaned:
 
         cleaned = (
@@ -427,9 +471,38 @@ def get_feedback():
             .strip()
         )
 
-    feedback = json.loads(cleaned)
+    # =========================
+    # SAFE JSON PARSING
+    # =========================
+
+    try:
+
+        feedback = json.loads(
+            cleaned
+        )
+
+    except json.JSONDecodeError as error:
+
+        print(
+            f"Feedback JSON parse error: {error}"
+        )
+
+        print(
+            f"Raw feedback response: {text}"
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "The AI returned invalid feedback JSON."
+        }), 500
 
     return jsonify({
         "success": True,
         "feedback": feedback
     })
+
+
+# =========================
+# IMPORTANT:
+# NO app.run() HERE
+# =========================
