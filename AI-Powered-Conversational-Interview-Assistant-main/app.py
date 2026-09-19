@@ -60,6 +60,11 @@ FEEDBACK_PROMPT = """Based on our complete interview conversation, provide detai
 }}
 Be specific - reference ACTUAL things they said during the interview."""
 
+
+# =========================================================
+# FLASK APP
+# =========================================================
+
 app = Flask(__name__)
 
 CORS(
@@ -83,11 +88,21 @@ def home():
     )
 
 
+@app.route("/index.js")
+def javascript():
+    return send_from_directory(
+        os.path.dirname(os.path.abspath(__file__)),
+        "index.js",
+        mimetype="application/javascript"
+    )
+
+
 # =========================================================
 # MURF TEXT-TO-SPEECH
 # =========================================================
 
 def stream_audio(text):
+
     BASE_URL = "https://global.api.murf.ai/v1/speech/stream"
 
     payload = {
@@ -114,6 +129,7 @@ def stream_audio(text):
     response.raise_for_status()
 
     for chunk in response.iter_content(chunk_size=4096):
+
         if chunk:
             yield base64.b64encode(chunk).decode("utf-8") + "\n"
 
@@ -125,11 +141,17 @@ def stream_audio(text):
 @app.route("/start-interview", methods=["POST"])
 def start_interview():
 
-    global question_count, current_subject, checkpointer, agent
+    global question_count
+    global current_subject
+    global checkpointer
+    global agent
 
     data = request.json
 
-    current_subject = data.get("subject", "Python")
+    current_subject = data.get(
+        "subject",
+        "Python"
+    )
 
     question_count = 1
 
@@ -163,7 +185,8 @@ def start_interview():
                     "content": (
                         f"Start the interview with a warm greeting "
                         f"and ask the first question about "
-                        f"{current_subject}. Keep it SHORT (1-2 sentences)."
+                        f"{current_subject}. "
+                        f"Keep it SHORT (1-2 sentences)."
                     )
                 }
             ]
@@ -173,7 +196,9 @@ def start_interview():
 
     question = response["messages"][-1].content
 
-    print(f"\n[Question {question_count}] {question}")
+    print(
+        f"\n[Question {question_count}] {question}"
+    )
 
     return Response(
         stream_audio(question),
@@ -186,6 +211,7 @@ def start_interview():
 # =========================================================
 
 def speech_to_text(audio_path):
+
     """Convert audio file to text using AssemblyAI"""
 
     transcriber = aai.Transcriber()
@@ -204,7 +230,11 @@ def speech_to_text(audio_path):
         config=config
     )
 
-    return transcript.text if transcript.text else ""
+    return (
+        transcript.text
+        if transcript.text
+        else ""
+    )
 
 
 # =========================================================
@@ -224,18 +254,27 @@ def submit_answer():
     ).name
 
     try:
+
         audio_file.save(temp_path)
 
-        answer = speech_to_text(temp_path)
+        answer = speech_to_text(
+            temp_path
+        )
 
     finally:
+
         if os.path.exists(temp_path):
             os.unlink(temp_path)
 
     if not answer or answer.strip() == "":
-        answer = "[Candidate provided a verbal response]"
 
-    print(f"[Answer {question_count}] {answer}")
+        answer = (
+            "[Candidate provided a verbal response]"
+        )
+
+    print(
+        f"[Answer {question_count}] {answer}"
+    )
 
     config = {
         "configurable": {
@@ -278,9 +317,13 @@ def submit_answer():
             config=config
         )
 
-        closing_message = response["messages"][-1].content
+        closing_message = (
+            response["messages"][-1].content
+        )
 
-        print(f"\n[Closing] {closing_message}")
+        print(
+            f"\n[Closing] {closing_message}"
+        )
 
         return Response(
             stream_audio(closing_message),
@@ -324,7 +367,9 @@ Only reference what they truly said."""
 
     question = response["messages"][-1].content
 
-    print(f"\n[Question {question_count}] {question}")
+    print(
+        f"\n[Question {question_count}] {question}"
+    )
 
     return Response(
         stream_audio(question),
@@ -355,9 +400,9 @@ def get_feedback():
                     "role": "user",
                     "content": (
                         f"{FEEDBACK_PROMPT}\n\n"
-                        f"Review our complete {current_subject} "
-                        f"interview conversation and provide "
-                        f"detailed feedback."
+                        f"Review our complete "
+                        f"{current_subject} interview conversation "
+                        f"and provide detailed feedback."
                     )
                 }
             ]
@@ -367,11 +412,14 @@ def get_feedback():
 
     text = response["messages"][-1].content
 
-    print(f"\n[Feedback Generated]\n{text}\n")
+    print(
+        f"\n[Feedback Generated]\n{text}\n"
+    )
 
     cleaned = text.strip()
 
     if "```" in cleaned:
+
         cleaned = (
             cleaned
             .split("```")[1]
