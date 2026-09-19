@@ -1,2 +1,9 @@
 Flask
+flask-cors
+python-dotenv
+langchain
+langchain-google-genai
+langgraph
+assemblyai
+requests
 gunicorn
